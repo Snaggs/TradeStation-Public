@@ -167,7 +167,7 @@ Func SaveFile($dir, $name)
    If WinActive("Notepad", "Do you want to create a new file") Then
       Send("y")
    EndIf
-   ; Wait for the Notepad become active -
+   ; Wait for Notepad to become active -
    ; it is titled "name - Notepad" on English systems
    WinActivate($name &".txt - Notepad")
    Sleep(100)
