@@ -20,14 +20,17 @@
 ;								 Save file using AutoIt instead of Notepad
 ;								 to make it work across Win10 & Win11
 ;								 Reformatted and cleaned up the code
-;								 Localized variables in func's
+;								 Localized variables in functions
 ;								 Added error handing
+; 12/27/25	1.2.0		Snaggs - Simplified the code
+;                              - Added file saved dialog box
 
+#include <FileConstants.au3>
 #include <MsgBoxConstants.au3>
 #include <StringConstants.au3>
 
-HotKeySet("!`", "Export")		; Alt-`
-HotKeySet("^`", "EndScript")	; Ctrl-`
+HotKeySet("!`", "Export")		; Alt-`     Saves the file to disk
+HotKeySet("^`", "EndScript")	; Ctrl-`    Exit's the script
 
 Global $rootDir = @UserProfileDir & "\Documents\GitHub\TradeStation\"	; Must have trailing \
 Global $tdeTitle = "TradeStation Development Environment"
@@ -44,6 +47,7 @@ Func EndScript()
 EndFunc
 
 Func Export()
+	; Find the TradeStation Development Environment window
 	WinActivate("[CLASS:TSDEV.EXE TRADESTATION]")
 
 	; Get the text from the title bar
@@ -56,42 +60,27 @@ Func Export()
 	; Copy the code to the clipboard
 	ClipPut($winCode)
 
-	; Split the title off the string
-	Local $parts = StringSplit($winTitle, $tdeTitle & " - ", $STR_ENTIRESPLIT)
+	; Locate the start and end of the study name
+	Local $start = StringInStr($winTitle, "-", 0) + 2   ; +2 to get past the '- '
+	Local $end = StringInStr($winTitle, ":", 2, -1)
 
-	; Make sure we have a valid title format
-	If $parts[0] < 2 Then
-		MsgBox($MB_ICONERROR, "Error", "Invalid TradeStation title format.")
-		Return
-	EndIf
+	; Extract the study name from the Window Title
+	Local $studyName = StringStripWS(StringMid($winTitle, $start, $end - $start -1), 3)
 
-	; Reverse the string to strip the last part off
-	Local $rev = StringReverse($parts[2])
+	; Replace invalid filename chars with an _
+	$studyName = StringRegExpReplace($studyName, '[\\/:*?"<>|]', '_')
 
-	; Find the index of the first colon
-	Local $delimIdx = StringInStr($rev, ":")
+	; Get the study type (indicator, function, etc)
+	Local $studyType = StringLower(StringMid($WinTitle, $end + 2))
 
-	; Get the studyType and studyName
-	Local $revStudyType = StringLeft($rev, $delimIdx - 2)
-	Local $revStudyName = StringMid($rev, $delimIdx + 1)
+	; If the study is unsaved, drop the * off the end of the studyType
+	If StringInStr($studyType, "*") Then
+		$studyType = StringTrimRight($studyType, 1)
+    ElseIf StringInStr($studyType, "(read-only)") Then
+        $studyType = StringTrimRight($studyType, 12)
+    EndIf
 
-	; If the study isn't saved, then there's an * on the end of the name, so remove it
-	If StringLeft($revStudyType, 1) = "*" Then
-		$revStudyType = StringMid($revStudyType, 2)
-
-	; If the study is (read-only) then remove that part of the name
-	ElseIf StringLeft($revStudyType, 11) = ")ylno-daer(" Then
-		$revStudyType = StringMid($revStudyType, 13)
-	EndIf
-
-	; Reverse the studyType and studName back to normal
-	Local $studyType = StringLower(StringReverse($revStudyType))
-	Local $studyName = StringStripWS(StringReverse($revStudyName), 3)
-
-	; Get the studyName
-	$studyName = FormatName($studyName)
-
-	; Build the directory
+    ; Build the directory based on studyType
 	Local $subDir = ""
 	Switch $studyType
 		Case "activitybar"
@@ -125,28 +114,11 @@ Func Export()
 	Local $fullFilePath = $targetDir & $studyName & ".txt"
 
 	; Save the contents to the file
-	SaveFile($fullFilePath)
-EndFunc
-
-; TradeStation allows these characters, but they can't be in a filename
-; Convert the character to its ASCII value
-Func FormatName($name)
-	$name = StringReplace($name, "\", "#92")
-	$name = StringReplace($name, "/", "#47")
-	$name = StringReplace($name, ":", "#58")
-	$name = StringReplace($name, "*", "#42")
-	$name = StringReplace($name, "?", "#63")
-	$name = StringReplace($name, "<", "#60")
-	$name = StringReplace($name, ">", "#62")
-	$name = StringReplace($name, "|", "#124")
-	Return $name
+	SaveFile($fullFilePath, $studyName)
 EndFunc
 
 ; Save the the clipboard text to a file.
-Func SaveFile($filePath)
-	; If the file exists, delete it so we can overwrite it
-	If FileExists($filePath) Then FileDelete($filePath)
-
+Func SaveFile($filePath, $studyName)
 	; Get the text to save from the Clipboard
 	Local $text = ClipGet()
 	If @error Or $text = "" Then
@@ -155,7 +127,7 @@ Func SaveFile($filePath)
 	EndIf
 
 	; Open the studyFile
-	Local $fh = FileOpen($filePath, 2)
+	Local $fh = FileOpen($filePath, $FO_OVERWRITE)
 	If $fh = -1 Then
 		MsgBox(16, "File Error", "Failed to open file: " & $filePath)
 		Return
@@ -164,4 +136,7 @@ Func SaveFile($filePath)
 	; Write the contents to the file and close it
 	FileWrite($fh, $text)
 	FileClose($fh)
+
+    ; Notify the user the study was saved to a file
+    MsgBox($MB_ICONINFORMATION, "File Saved", $studyName, 2)
 EndFunc
